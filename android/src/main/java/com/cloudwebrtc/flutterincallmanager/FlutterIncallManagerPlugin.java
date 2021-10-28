@@ -109,14 +109,14 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
      * AudioDevice is the names of possible audio devices that we currently
      * support.
      */
-    public enum AudioDevice {
+    private enum AudioDevice {
         SPEAKER_PHONE, WIRED_HEADSET, EARPIECE, BLUETOOTH, NONE
     }
 
     /**
      * AudioManager state.
      */
-    public enum AudioManagerState {
+    private enum AudioManagerState {
         UNINITIALIZED,
         PREINITIALIZED,
         RUNNING,

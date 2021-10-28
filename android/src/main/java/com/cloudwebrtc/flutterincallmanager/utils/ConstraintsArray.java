@@ -3,7 +3,7 @@ package com.cloudwebrtc.flutterincallmanager.utils;
 import java.util.ArrayList;
 import java.util.Map;
 
-public class ConstraintsArray {
+class ConstraintsArray {
 
     final private  ArrayList<Object> mArray;
 

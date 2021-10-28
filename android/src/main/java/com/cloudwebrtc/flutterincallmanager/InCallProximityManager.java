@@ -16,6 +16,7 @@
 
 package com.cloudwebrtc.flutterincallmanager;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.hardware.Sensor;
 import android.hardware.SensorManager;
@@ -25,7 +26,6 @@ import android.util.Log;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.lang.Runnable;
 
 import com.cloudwebrtc.flutterincallmanager.AppRTC.AppRTCProximitySensor;
 
@@ -58,6 +58,7 @@ public class InCallProximityManager {
         }
     }
 
+    @SuppressLint("InvalidWakeLockTag")
     private void checkProximitySupport(Context context) {
         SensorManager sensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
         if (sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY) == null) {

@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_incall_manager/flutter_incall_manager.dart';
 
@@ -26,7 +27,7 @@ class _MyAppState extends State<MyApp> {
       {
         'InCallManager.start(audio)': () {
           incallManager.start(
-              media: MediaType.AUDIO, auto: false, ringback: '_DEFAULT_');
+              media: MediaType.AUDIO, auto: false, ringback: '_DTMF_');
         }
       },
       {
@@ -134,6 +135,10 @@ class _MyAppState extends State<MyApp> {
         {
           'setMicrophoneMute(false)': () {
             incallManager.setMicrophoneMute(false);
+          }
+        },{
+          'setForceSpeakerphoneOn(true)': () {
+            incallManager.setForceSpeakerphoneOn(flag:ForceSpeakerType.FORCE_ON);
           }
         }
       ]);

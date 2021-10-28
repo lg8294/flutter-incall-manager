@@ -16,6 +16,7 @@
 
 package com.cloudwebrtc.flutterincallmanager;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
@@ -31,6 +32,7 @@ public class InCallWakeLockUtils {
     private WakeLock mPartialLock = null;
 
 
+    @SuppressLint("InvalidWakeLockTag")
     public InCallWakeLockUtils(Context context) {
         mPowerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
 
