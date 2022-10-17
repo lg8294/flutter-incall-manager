@@ -1,25 +1,32 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_incall_manager/flutter_incall_manager.dart';
 
-void main() => runApp(new MyApp());
+void main() {
+  runApp(const MyApp());
+}
 
 class MyApp extends StatefulWidget {
+  const MyApp({Key key}) : super(key: key);
+
   @override
-  _MyAppState createState() => new _MyAppState();
+  State<MyApp> createState() => _MyAppState();
 }
 
 class _MyAppState extends State<MyApp> {
-  IncallManager incallManager = new IncallManager();
+  IncallManager incallManager = IncallManager();
 
   @override
-  initState() {
+  void initState() {
     super.initState();
   }
 
   void showResult(title, result) {
-    print('$title => $result.');
+    if (kDebugMode) {
+      print('$title => $result.');
+    }
   }
 
   List<Widget> buildTestButtons() {
@@ -136,36 +143,43 @@ class _MyAppState extends State<MyApp> {
           'setMicrophoneMute(false)': () {
             incallManager.setMicrophoneMute(false);
           }
-        },{
+        },
+        {
           'setForceSpeakerphoneOn(true)': () {
-            incallManager.setForceSpeakerphoneOn(flag:ForceSpeakerType.FORCE_ON);
+            incallManager.setForceSpeakerphoneOn(
+                flag: ForceSpeakerType.FORCE_ON);
           }
         }
       ]);
     }
 
     return items
-        .map((item) => RaisedButton(
+        .map((item) => ElevatedButton(
               onPressed: () async {
-                print('${item.keys.first}');
+                if (kDebugMode) {
+                  print(item.keys.first);
+                }
                 await item.values.first();
               },
-              child: new Text(item.keys.first),
+              child: Text(item.keys.first),
             ))
         .toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    return new MaterialApp(
-      home: new Scaffold(
-        appBar: new AppBar(
-          title: new Text('Flutter InCallManager example'),
+    return MaterialApp(
+      home: Scaffold(
+        appBar: AppBar(
+          title: const Text('Plugin example app'),
         ),
-        body: new SingleChildScrollView(
-          child: new Column(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: buildTestButtons(),
+        body: Center(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: buildTestButtons(),
+            ),
           ),
         ),
       ),

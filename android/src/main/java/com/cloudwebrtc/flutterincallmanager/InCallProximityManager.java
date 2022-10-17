@@ -1,10 +1,10 @@
 /*
  * Copyright (c) 2017 Henry Lin @zxcpoiu
- * 
+ *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
  * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
@@ -37,7 +37,9 @@ public class InCallProximityManager {
     private boolean proximitySupported = false;
     private AppRTCProximitySensor proximitySensor = null;
 
-    /** Construction */
+    /**
+     * Construction
+     */
     static InCallProximityManager create(Context context, final FlutterIncallManagerPlugin inCallManager) {
         return new InCallProximityManager(context, inCallManager);
     }
@@ -47,13 +49,13 @@ public class InCallProximityManager {
         checkProximitySupport(context);
         if (proximitySupported) {
             proximitySensor = AppRTCProximitySensor.create(context,
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        Log.d(TAG,"InCallProximityManager:AppRTCProximitySensor:run()");
-                        inCallManager.onProximitySensorChangedState(proximitySensor.sensorReportsNearState());               
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            Log.d(TAG, "InCallProximityManager:AppRTCProximitySensor:run()");
+                            inCallManager.onProximitySensorChangedState(proximitySensor.sensorReportsNearState());
+                        }
                     }
-                }
             );
         }
     }

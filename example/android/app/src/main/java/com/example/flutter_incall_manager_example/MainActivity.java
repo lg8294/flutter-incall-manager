@@ -1,4 +1,4 @@
-package com.cloudwebrtc.flutterincallmanagerexample;
+package com.example.flutter_incall_manager_example;
 
 import io.flutter.embedding.android.FlutterActivity;
 

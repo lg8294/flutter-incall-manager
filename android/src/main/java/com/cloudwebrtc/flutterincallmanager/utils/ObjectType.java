@@ -1,6 +1,6 @@
 package com.cloudwebrtc.flutterincallmanager.utils;
 
-enum ObjectType {
+public enum ObjectType {
     Null,
     Boolean,
     Number,

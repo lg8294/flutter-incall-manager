@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.ResultReceiver;
+
 import androidx.core.content.ContextCompat;
 
 import com.cloudwebrtc.flutterincallmanager.FlutterIncallManagerPlugin;
@@ -83,7 +84,7 @@ public class PermissionUtils {
 
         for (int i = 0; i < size; ++i) {
             int grantResult
-                = ContextCompat.checkSelfPermission(
+                    = ContextCompat.checkSelfPermission(
                     plugin.getContext(),
                     permissions[i]);
 
@@ -108,7 +109,7 @@ public class PermissionUtils {
                 // Android version on the device.
                 || Build.VERSION.SDK_INT < Build.VERSION_CODES.M
                 || plugin.getActivity().getApplicationInfo().targetSdkVersion
-                    < Build.VERSION_CODES.M) {
+                < Build.VERSION_CODES.M) {
             send(resultReceiver, requestCode, permissions, grantResults);
             return;
         }
@@ -120,11 +121,11 @@ public class PermissionUtils {
         // about the denied permissions and getUserMedia will fail.
         if (activity == null) {
             maybeRequestPermissionsOnHostResume(
-                plugin,
-                permissions,
-                grantResults,
-                resultReceiver,
-                requestCode);
+                    plugin,
+                    permissions,
+                    grantResults,
+                    resultReceiver,
+                    requestCode);
             return;
         }
 
@@ -139,7 +140,7 @@ public class PermissionUtils {
         fragment.setPlugin(plugin);
 
         FragmentTransaction transaction
-            = activity.getFragmentManager().beginTransaction().add(
+                = activity.getFragmentManager().beginTransaction().add(
                 fragment,
                 fragment.getClass().getName() + "-" + requestCode);
 
@@ -148,11 +149,11 @@ public class PermissionUtils {
         } catch (IllegalStateException ise) {
             // The Activity has likely already saved its state.
             maybeRequestPermissionsOnHostResume(
-                plugin,
-                permissions,
-                grantResults,
-                resultReceiver,
-                requestCode);
+                    plugin,
+                    permissions,
+                    grantResults,
+                    resultReceiver,
+                    requestCode);
         }
     }
 
@@ -161,18 +162,18 @@ public class PermissionUtils {
             final String[] permissions,
             final Callback callback) {
         requestPermissions(
-            plugin,
-            permissions,
-            new ResultReceiver(new Handler(Looper.getMainLooper())) {
-                @Override
-                protected void onReceiveResult(
-                        int resultCode,
-                        Bundle resultData) {
-                    callback.invoke(
-                        resultData.getStringArray(PERMISSIONS),
-                        resultData.getIntArray(GRANT_RESULTS));
-                }
-            });
+                plugin,
+                permissions,
+                new ResultReceiver(new Handler(Looper.getMainLooper())) {
+                    @Override
+                    protected void onReceiveResult(
+                            int resultCode,
+                            Bundle resultData) {
+                        callback.invoke(
+                                resultData.getStringArray(PERMISSIONS),
+                                resultData.getIntArray(GRANT_RESULTS));
+                    }
+                });
     }
 
     private static void send(
@@ -201,9 +202,10 @@ public class PermissionUtils {
     public static class RequestPermissionsFragment extends Fragment {
         private FlutterIncallManagerPlugin plugin;
 
-        public void setPlugin(FlutterIncallManagerPlugin plugin){
+        public void setPlugin(FlutterIncallManagerPlugin plugin) {
             this.plugin = plugin;
         }
+
         private void checkSelfPermissions(boolean requestPermissions) {
             // Figure out which of the requested permissions are actually denied
             // because we do not want to ask about the granted permissions
@@ -232,16 +234,16 @@ public class PermissionUtils {
                 // the user about the denied ones.
                 finish();
                 send(
-                    (ResultReceiver) args.getParcelable(RESULT_RECEIVER),
-                    requestCode,
-                    permissions,
-                    grantResults);
+                        (ResultReceiver) args.getParcelable(RESULT_RECEIVER),
+                        requestCode,
+                        permissions,
+                        grantResults);
             } else {
                 // Ask the user about the denied permissions.
                 requestPermissions(
-                    deniedPermissions.toArray(
-                        new String[deniedPermissions.size()]),
-                    requestCode);
+                        deniedPermissions.toArray(
+                                new String[deniedPermissions.size()]),
+                        requestCode);
             }
         }
 
@@ -250,8 +252,8 @@ public class PermissionUtils {
 
             if (activity != null) {
                 activity.getFragmentManager().beginTransaction()
-                    .remove(this)
-                    .commitAllowingStateLoss();
+                        .remove(this)
+                        .commitAllowingStateLoss();
             }
         }
 
@@ -275,9 +277,9 @@ public class PermissionUtils {
                 // the invocation so we have to redo the permission request.
                 finish();
                 PermissionUtils.requestPermissions(
-                    plugin,
-                    args.getStringArray(PERMISSIONS),
-                    (ResultReceiver) args.getParcelable(RESULT_RECEIVER));
+                        plugin,
+                        args.getStringArray(PERMISSIONS),
+                        (ResultReceiver) args.getParcelable(RESULT_RECEIVER));
             } else {
                 // We did not ask for all requested permissions, just the denied
                 // ones. But when we send the result, we have to answer about

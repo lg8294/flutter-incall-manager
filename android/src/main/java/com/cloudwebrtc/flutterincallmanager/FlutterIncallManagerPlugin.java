@@ -1,12 +1,15 @@
 package com.cloudwebrtc.flutterincallmanager;
 
+import io.flutter.embedding.engine.plugins.FlutterPlugin;
+import io.flutter.embedding.engine.plugins.activity.ActivityAware;
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.plugin.common.MethodCall;
-import io.flutter.plugin.common.PluginRegistry.Registrar;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
@@ -25,7 +28,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.provider.Settings;
 
-import androidx.annotation.Nullable;
+import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
@@ -37,7 +40,6 @@ import android.view.Window;
 import android.view.WindowManager;
 
 
-import java.lang.Runnable;
 import java.io.File;
 import java.util.Collections;
 import java.util.Map;
@@ -49,11 +51,12 @@ import java.util.Set;
 import com.cloudwebrtc.flutterincallmanager.AppRTC.AppRTCBluetoothManager;
 import com.cloudwebrtc.flutterincallmanager.utils.ConstraintsMap;
 
+//ActivityPluginBinding
 
 /**
  * FlutterIncallManagerPlugin
  */
-public class FlutterIncallManagerPlugin implements MethodCallHandler {
+public class FlutterIncallManagerPlugin implements FlutterPlugin, MethodCallHandler, ActivityAware {
 
     private static final String TAG = "InCallManager";
     private static SparseArray<String> mRequestPermissionCodeTargetPermission;
@@ -72,8 +75,6 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
     private boolean origIsSpeakerPhoneOn = false;
     private boolean origIsMicrophoneMute = false;
     private int origAudioMode = AudioManager.MODE_INVALID;
-    private boolean defaultSpeakerOn = false;
-    private int defaultAudioMode = AudioManager.MODE_IN_COMMUNICATION;
     private int forceSpeakerOn = 0;
     private boolean automatic = true;
     private boolean isProximityRegistered = false;
@@ -85,25 +86,55 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
     private OnFocusChangeListener mOnFocusChangeListener;
 
     // --- same as: RingtoneManager.getActualDefaultRingtoneUri(reactContext, RingtoneManager.TYPE_RINGTONE);
-    private Uri defaultRingtoneUri = Settings.System.DEFAULT_RINGTONE_URI;
-    private Uri defaultRingbackUri = Settings.System.DEFAULT_RINGTONE_URI;
-    private Uri defaultBusytoneUri = Settings.System.DEFAULT_NOTIFICATION_URI;
+    private final Uri defaultRingtoneUri = Settings.System.DEFAULT_RINGTONE_URI;
+    private final Uri defaultRingbackUri = Settings.System.DEFAULT_RINGTONE_URI;
+    private final Uri defaultBusytoneUri = Settings.System.DEFAULT_NOTIFICATION_URI;
     //private Uri defaultAlarmAlertUri = Settings.System.DEFAULT_ALARM_ALERT_URI; // --- too annoying
-    private Uri bundleRingtoneUri;
-    private Uri bundleRingbackUri;
-    private Uri bundleBusytoneUri;
+
     private Map<String, Uri> audioUriMap;
     private MyPlayerInterface mRingtone;
     private MyPlayerInterface mRingback;
     private MyPlayerInterface mBusytone;
     private Handler mRingtoneCountDownHandler;
-    private String media = "audio";
     private static String recordPermission = "unknow";
     private static String cameraPermission = "unknow";
 
     private static final String SPEAKERPHONE_AUTO = "auto";
     private static final String SPEAKERPHONE_TRUE = "true";
     private static final String SPEAKERPHONE_FALSE = "false";
+
+
+    @Override
+    public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
+        final MethodChannel channel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(), "FlutterInCallManager.Method");
+        init(flutterPluginBinding, channel);
+        channel.setMethodCallHandler(this);
+    }
+
+    @Override
+    public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+        channel.setMethodCallHandler(null);
+    }
+
+    @Override
+    public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
+        activityPluginBinding = binding;
+    }
+
+    @Override
+    public void onDetachedFromActivityForConfigChanges() {
+        activityPluginBinding = null;
+    }
+
+    @Override
+    public void onReattachedToActivityForConfigChanges(@NonNull ActivityPluginBinding binding) {
+        activityPluginBinding = binding;
+    }
+
+    @Override
+    public void onDetachedFromActivity() {
+        activityPluginBinding = null;
+    }
 
     /**
      * AudioDevice is the names of possible audio devices that we currently
@@ -122,7 +153,7 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
         RUNNING,
     }
 
-    private int savedAudioMode = AudioManager.MODE_INVALID;
+    private final int savedAudioMode = AudioManager.MODE_INVALID;
     private boolean savedIsSpeakerPhoneOn = false;
     private boolean savedIsMicrophoneMute = false;
     private boolean hasWiredHeadset = false;
@@ -148,12 +179,12 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
     private final String useSpeakerphone = SPEAKERPHONE_AUTO;
 
     // Handles all tasks related to Bluetooth headset devices.
-    private final AppRTCBluetoothManager bluetoothManager;
+    private AppRTCBluetoothManager bluetoothManager;
 
     //ProximityManager
-    private final InCallProximityManager proximityManager;
+    private InCallProximityManager proximityManager;
 
-    private final InCallWakeLockUtils wakeLockUtils;
+    private InCallWakeLockUtils wakeLockUtils;
 
     // Contains a list of available audio devices. A Set collection is used to
     // avoid duplicate elements.
@@ -163,16 +194,20 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
     private AudioManager.OnAudioFocusChangeListener audioFocusChangeListener;
 
     interface MyPlayerInterface {
-        public boolean isPlaying();
-        public void startPlay(Map<String, Object> data);
-        public void stopPlay();
+        boolean isPlaying();
+
+        void startPlay(Map<String, Object> data);
+
+        void stopPlay();
     }
 
-    private final Registrar registrar;
-    private final MethodChannel channel;
+    //    private final Registrar registrar;
+    private FlutterPluginBinding binding;
+    private ActivityPluginBinding activityPluginBinding;
+    private MethodChannel channel;
     private EventChannel.EventSink eventSink = null;
 
-    private EventChannel.StreamHandler streamHandler = new EventChannel.StreamHandler() {
+    private final EventChannel.StreamHandler streamHandler = new EventChannel.StreamHandler() {
         @Override
         public void onListen(Object o, EventChannel.EventSink sink) {
             eventSink = sink;
@@ -184,25 +219,21 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
         }
     };
 
-    public Registrar registrar() {
-        return this.registrar;
-    }
 
     public Activity getActivity() {
-        return registrar.activity();
+        if (activityPluginBinding == null) return null;
+        return activityPluginBinding.getActivity();
     }
 
     public Context getContext() {
-        return registrar.context();
+//        return registrar.context();
+        return binding.getApplicationContext();
     }
 
-    public static void registerWith(Registrar registrar) {
-        final MethodChannel channel = new MethodChannel(registrar.messenger(), "FlutterInCallManager.Method");
-        channel.setMethodCallHandler(new FlutterIncallManagerPlugin(registrar, channel));
-    }
 
-    private FlutterIncallManagerPlugin(Registrar registrar, MethodChannel channel) {
-        this.registrar = registrar;
+    void init(@NonNull FlutterPluginBinding binding, MethodChannel channel) {
+//        this.registrar = registrar;
+        this.binding = binding;
         this.channel = channel;
         mWindowManager = (WindowManager) getContext().getSystemService(Context.WINDOW_SERVICE);
         mPowerManager = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
@@ -214,88 +245,110 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
         audioUriMap.put("defaultRingtoneUri", defaultRingtoneUri);
         audioUriMap.put("defaultRingbackUri", defaultRingbackUri);
         audioUriMap.put("defaultBusytoneUri", defaultBusytoneUri);
-        audioUriMap.put("bundleRingtoneUri", bundleRingtoneUri);
-        audioUriMap.put("bundleRingbackUri", bundleRingbackUri);
-        audioUriMap.put("bundleBusytoneUri", bundleBusytoneUri);
         mRequestPermissionCodeTargetPermission = new SparseArray<String>();
         mOnFocusChangeListener = new OnFocusChangeListener();
         bluetoothManager = AppRTCBluetoothManager.create(getContext(), this);
         proximityManager = InCallProximityManager.create(getContext(), this);
         wakeLockUtils = new InCallWakeLockUtils(getContext());
-        EventChannel eventChannel = new EventChannel(registrar.messenger(), "FlutterInCallManager.Event");
+        EventChannel eventChannel = new EventChannel(binding.getBinaryMessenger(), "FlutterInCallManager.Event");
         eventChannel.setStreamHandler(streamHandler);
         Log.d(TAG, "InCallManager initialized");
     }
 
 
     @Override
-    public void onMethodCall(MethodCall call, Result result) {
-        if (call.method.equals("getPlatformVersion")) {
-            result.success("Android " + Build.VERSION.RELEASE);
-        } else if (call.method.equals("start")) {
-            String media = call.argument("media");
-            boolean auto = call.argument("auto");
-            String ringback = call.argument("ringback");
-            start(media, auto, ringback);
-            result.success(null);
-        } else if (call.method.equals("stop")) {
-            String busytone = call.argument("busytone");
-            stop(busytone);
-            result.success(null);
-        } else if (call.method.equals("setKeepScreenOn")) {
-            Boolean enabled = call.argument("enabled");
-            setKeepScreenOn(true);
-            result.success(null);
-        } else if (call.method.equals("setSpeakerphoneOn")) {
-            Boolean enabled = call.argument("enabled");
-            setSpeakerphoneOn(enabled);
-            result.success(null);
-        } else if (call.method.equals("setForceSpeakerphoneOn")) {
-            int flag = call.argument("flag");
-            setForceSpeakerphoneOn(flag);
-            result.success(null);
-        } else if (call.method.equals("setMicrophoneMute")) {
-            Boolean enabled = call.argument("enabled");
-            setMicrophoneMute(enabled);
-            result.success(null);
-        } else if (call.method.equals("turnScreenOn")) {
-            turnScreenOn();
-            result.success(null);
-        } else if (call.method.equals("turnScreenOff")) {
-            turnScreenOff();
-            result.success(null);
-        } else if (call.method.equals("startRingtone")) {
-            String ringtoneUriType = call.argument("ringtoneUriType");
-            int seconds = call.argument("seconds");
-            startRingtone(ringtoneUriType, seconds);
-            result.success(null);
-        } else if (call.method.equals("stopRingtone")) {
-            stopRingtone();
-            result.success(null);
-        } else if (call.method.equals("startRingback")) {
-            startRingback("_BUNDLE_");
-            result.success(null);
-        } else if (call.method.equals("stopRingback")) {
-            stopRingback();
-            result.success(null);
-        } else if (call.method.equals("checkRecordPermission")) {
-            checkRecordPermission(result);
-        } else if (call.method.equals("requestRecordPermission")) {
-            requestRecordPermission(result);
-        } else if (call.method.equals("checkCameraPermission")) {
-            checkCameraPermission(result);
-        } else if (call.method.equals("requestCameraPermission")) {
-            requestCameraPermission(result);
-        } else if (call.method.equals("enableProximitySensor")) {
-            Boolean enabled = call.argument("enabled");
-            if(enabled) {
-                startProximitySensor();
-            } else {
-                stopProximitySensor();
+    public void onMethodCall(MethodCall call, @NonNull Result result) {
+        switch (call.method) {
+            case "getPlatformVersion":
+                result.success("Android " + Build.VERSION.RELEASE);
+                break;
+            case "start":
+                String media = call.argument("media");
+                boolean auto = Boolean.TRUE.equals(call.argument("auto"));
+                String ringback = call.argument("ringback");
+                assert media != null;
+                start(media, auto, ringback);
+                result.success(null);
+                break;
+            case "stop":
+                String busytone = call.argument("busytone");
+                stop(busytone);
+                result.success(null);
+                break;
+            case "setKeepScreenOn": {
+                boolean enabled = Boolean.TRUE.equals(call.argument("enabled"));
+                setKeepScreenOn(true);
+                result.success(null);
+                break;
             }
-            result.success(null);
-        }else {
-            result.notImplemented();
+            case "setSpeakerphoneOn": {
+                boolean enabled = Boolean.TRUE.equals(call.argument("enabled"));
+                setSpeakerphoneOn(enabled);
+                result.success(null);
+                break;
+            }
+            case "setForceSpeakerphoneOn":
+                int flag = call.argument("flag");
+                setForceSpeakerphoneOn(flag);
+                result.success(null);
+                break;
+            case "setMicrophoneMute": {
+                Boolean enabled = call.argument("enabled");
+                setMicrophoneMute(Boolean.TRUE.equals(enabled));
+                result.success(null);
+                break;
+            }
+            case "turnScreenOn":
+                turnScreenOn();
+                result.success(null);
+                break;
+            case "turnScreenOff":
+                turnScreenOff();
+                result.success(null);
+                break;
+            case "startRingtone":
+                String ringtoneUriType = call.argument("ringtoneUriType");
+                int seconds = call.argument("seconds");
+                startRingtone(ringtoneUriType, seconds);
+                result.success(null);
+                break;
+            case "stopRingtone":
+                stopRingtone();
+                result.success(null);
+                break;
+            case "startRingback":
+                startRingback("_BUNDLE_");
+                result.success(null);
+                break;
+            case "stopRingback":
+                stopRingback();
+                result.success(null);
+                break;
+            case "checkRecordPermission":
+                checkRecordPermission(result);
+                break;
+            case "requestRecordPermission":
+                requestRecordPermission(result);
+                break;
+            case "checkCameraPermission":
+                checkCameraPermission(result);
+                break;
+            case "requestCameraPermission":
+                requestCameraPermission(result);
+                break;
+            case "enableProximitySensor": {
+                boolean enabled = Boolean.TRUE.equals(call.argument("enabled"));
+                if (enabled) {
+                    startProximitySensor();
+                } else {
+                    stopProximitySensor();
+                }
+                result.success(null);
+                break;
+            }
+            default:
+                result.notImplemented();
+                break;
         }
     }
 
@@ -310,6 +363,7 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
         }
     }
 
+    @SuppressLint("WrongConstant")
     private void restoreOriginalAudioSetup() {
         Log.d(TAG, "restoreOriginalAudioSetup()");
         if (isOrigAudioSetupStored) {
@@ -331,27 +385,27 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
                 @Override
                 public void onReceive(Context context, Intent intent) {
                     if (ACTION_HEADSET_PLUG.equals(intent.getAction())) {
-            boolean wiredHeadsetEnabled = true;
-            // when we have state, and this is 0, means no real headset, so, we cant offer a headset
-            if (intent.hasExtra("state") && intent.getIntExtra("state", 0) == 0){
-              wiredHeadsetEnabled = false;
-            }
-            if (wiredHeadsetEnabled) {
-                        hasWiredHeadset = true;
-                        updateAudioRoute();
-                        String deviceName = intent.getStringExtra("name");
-                        if (deviceName == null) {
-                            deviceName = "";
+                        boolean wiredHeadsetEnabled = true;
+                        // when we have state, and this is 0, means no real headset, so, we cant offer a headset
+                        if (intent.hasExtra("state") && intent.getIntExtra("state", 0) == 0) {
+                            wiredHeadsetEnabled = false;
                         }
-                        if (eventSink != null) {
-                            ConstraintsMap params = new ConstraintsMap();
-                            params.putString("event", "WiredHeadset");
-                            params.putBoolean("isPlugged", intent.getIntExtra("state", 0) == 1);
-                            params.putBoolean("hasMic", intent.getIntExtra("microphone", 0) == 1);
-                            params.putString("deviceName", deviceName);
-                            eventSink.success(params.toMap());
+                        if (wiredHeadsetEnabled) {
+                            hasWiredHeadset = true;
+                            updateAudioRoute();
+                            String deviceName = intent.getStringExtra("name");
+                            if (deviceName == null) {
+                                deviceName = "";
+                            }
+                            if (eventSink != null) {
+                                ConstraintsMap params = new ConstraintsMap();
+                                params.putString("event", "WiredHeadset");
+                                params.putBoolean("isPlugged", intent.getIntExtra("state", 0) == 1);
+                                params.putBoolean("hasMic", intent.getIntExtra("microphone", 0) == 1);
+                                params.putString("deviceName", deviceName);
+                                eventSink.success(params.toMap());
+                            }
                         }
-            }
                     } else {
                         hasWiredHeadset = false;
                     }
@@ -575,9 +629,10 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
         }
     }
 
+    boolean defaultSpeakerOn = false;
     public void start(final String _media, final boolean auto, final String ringbackUriType) {
-        media = _media;
-        if (media.equals("video")) {
+
+        if (_media.equals("video")) {
             defaultSpeakerOn = true;
         } else {
             defaultSpeakerOn = false;
@@ -598,6 +653,7 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
             bluetoothManager.start();
             // TODO: even if not acquired focus, we can still play sounds. but need figure out which is better.
             //getCurrentActivity().setVolumeControlStream(AudioManager.STREAM_VOICE_CALL);
+            int defaultAudioMode = AudioManager.MODE_IN_COMMUNICATION;
             audioManager.setMode(defaultAudioMode);
             setSpeakerphoneOn(defaultSpeakerOn);
             setMicrophoneMute(false);
@@ -609,7 +665,7 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
             audioDevices.clear();
             updateAudioRoute();
 
-      if (ringbackUriType != null && !ringbackUriType.isEmpty()) {
+            if (ringbackUriType != null && !ringbackUriType.isEmpty()) {
                 startRingback(ringbackUriType);
             }
         }
@@ -623,7 +679,7 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
     public void stop(final String busytoneUriType) {
         if (audioManagerActivated) {
             stopRingback();
-      if (busytoneUriType != null && !busytoneUriType.isEmpty() && startBusytone(busytoneUriType)) {
+            if (busytoneUriType != null && !busytoneUriType.isEmpty() && startBusytone(busytoneUriType)) {
                 // play busytone first, and call this func again when finish
                 Log.d(TAG, "play busytone before stop InCallManager");
                 return;
@@ -1052,16 +1108,14 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
 
             if (seconds > 0) {
                 mRingtoneCountDownHandler = new Handler();
-                mRingtoneCountDownHandler.postDelayed(new Runnable() {
-                    public void run() {
-                        try {
-                            Log.d(TAG, String.format("mRingtoneCountDownHandler.stopRingtone() timeout after %d seconds", seconds));
-                            stopRingtone();
-                        } catch (Exception e) {
-                            Log.d(TAG, "mRingtoneCountDownHandler.stopRingtone() failed.");
-                        }
+                mRingtoneCountDownHandler.postDelayed(() -> {
+                    try {
+                        Log.d(TAG, String.format("mRingtoneCountDownHandler.stopRingtone() timeout after %d seconds", seconds));
+                        stopRingtone();
+                    } catch (Exception e) {
+                        Log.d(TAG, "mRingtoneCountDownHandler.stopRingtone() failed.");
                     }
-                }, seconds * 1000);
+                }, seconds * 1000L);
             }
         } catch (Exception e) {
             wakeLockUtils.releasePartialWakeLock();
@@ -1088,56 +1142,47 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
 
     private void setMediaPlayerEvents(MediaPlayer mp, final String name) {
 
-        mp.setOnErrorListener(new MediaPlayer.OnErrorListener() {
-            //http://developer.android.com/reference/android/media/MediaPlayer.OnErrorListener.html
-            @Override
-            public boolean onError(MediaPlayer mp, int what, int extra) {
-                Log.d(TAG, String.format("MediaPlayer %s onError(). what: %d, extra: %d", name, what, extra));
-                //return True if the method handled the error
-                //return False, or not having an OnErrorListener at all, will cause the OnCompletionListener to be called. Get news & tips
-                return true;
-            }
+        //http://developer.android.com/reference/android/media/MediaPlayer.OnErrorListener.html
+        mp.setOnErrorListener((mp12, what, extra) -> {
+            Log.d(TAG, String.format("MediaPlayer %s onError(). what: %d, extra: %d", name, what, extra));
+            //return True if the method handled the error
+            //return False, or not having an OnErrorListener at all, will cause the OnCompletionListener to be called. Get news & tips
+            return true;
         });
 
-        mp.setOnInfoListener(new MediaPlayer.OnInfoListener() {
-            //http://developer.android.com/reference/android/media/MediaPlayer.OnInfoListener.html
-            @Override
-            public boolean onInfo(MediaPlayer mp, int what, int extra) {
-                Log.d(TAG, String.format("MediaPlayer %s onInfo(). what: %d, extra: %d", name, what, extra));
-                //return True if the method handled the info
-                //return False, or not having an OnInfoListener at all, will cause the info to be discarded.
-                return true;
-            }
+        //http://developer.android.com/reference/android/media/MediaPlayer.OnInfoListener.html
+        mp.setOnInfoListener((mp13, what, extra) -> {
+            Log.d(TAG, String.format("MediaPlayer %s onInfo(). what: %d, extra: %d", name, what, extra));
+            //return True if the method handled the info
+            //return False, or not having an OnInfoListener at all, will cause the info to be discarded.
+            return true;
         });
 
-        mp.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
-            @Override
-            public void onPrepared(MediaPlayer mp) {
-                Log.d(TAG, String.format("MediaPlayer %s onPrepared(), start play, isSpeakerPhoneOn %b", name, audioManager.isSpeakerphoneOn()));
-                if (name.equals("mBusytone")) {
+        mp.setOnPreparedListener(mp1 -> {
+            Log.d(TAG, String.format("MediaPlayer %s onPrepared(), start play, isSpeakerPhoneOn %b", name, audioManager.isSpeakerphoneOn()));
+            switch (name) {
+                case "mBusytone":
+                case "mRingback":
                     audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-                } else if (name.equals("mRingback")) {
-                    audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-                } else if (name.equals("mRingtone")) {
+                    break;
+                case "mRingtone":
                     audioManager.setMode(AudioManager.MODE_RINGTONE);
-                }
-                updateAudioRoute();
-                mp.start();
+                    break;
             }
+            updateAudioRoute();
+            mp1.start();
         });
 
-        mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-            @Override
-            public void onCompletion(MediaPlayer mp) {
-                Log.d(TAG, String.format("MediaPlayer %s onCompletion()", name));
-                if (name.equals("mBusytone")) {
-                    Log.d(TAG, "MyMediaPlayer(): invoke stop()");
-                    stop();
-                }
+        mp.setOnCompletionListener(mp14 -> {
+            Log.d(TAG, String.format("MediaPlayer %s onCompletion()", name));
+            if (name.equals("mBusytone")) {
+                Log.d(TAG, "MyMediaPlayer(): invoke stop()");
+                stop();
             }
         });
 
     }
+
     private Uri getRingtoneUri(final String _type) {
         final String fileBundle = "incallmanager_ringtone";
         final String fileBundleExt = "mp3";
@@ -1151,7 +1196,7 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
         } else {
             type = _type;
         }
-        return getAudioUri(type, fileBundle, fileBundleExt, fileSysWithExt, fileSysPath, "bundleRingtoneUri", "defaultRingtoneUri");
+        return getAudioUri(type, fileBundle, "bundleRingtoneUri", "defaultRingtoneUri");
     }
 
     private Uri getRingbackUri(final String _type) {
@@ -1167,7 +1212,7 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
         } else {
             type = _type;
         }
-        return getAudioUri(type, fileBundle, fileBundleExt, fileSysWithExt, fileSysPath, "bundleRingbackUri", "defaultRingbackUri");
+        return getAudioUri(type, fileBundle, "bundleRingbackUri", "defaultRingbackUri");
     }
 
     private Uri getBusytoneUri(final String _type) {
@@ -1183,12 +1228,11 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
         } else {
             type = _type;
         }
-        return getAudioUri(type, fileBundle, fileBundleExt, fileSysWithExt, fileSysPath, "bundleBusytoneUri", "defaultBusytoneUri");
+        return getAudioUri(type, fileBundle, "bundleBusytoneUri", "defaultBusytoneUri");
     }
 
-    private Uri getAudioUri(final String _type, final String fileBundle, final String fileBundleExt, final String fileSysWithExt, final String fileSysPath, final String uriBundle, final String uriDefault) {
-        String type = _type;
-        if (type.equals("_BUNDLE_")) {
+    private Uri getAudioUri(final String _type, final String fileBundle, final String uriBundle, final String uriDefault) {
+        if (_type.equals("_BUNDLE_")) {
             if (audioUriMap.get(uriBundle) == null) {
                 int res = 0;
                 Context reactContext = getContext();
@@ -1198,7 +1242,7 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
                     Log.d(TAG, "getAudioUri() reactContext is null");
                 }
                 if (res <= 0) {
-                    Log.d(TAG, String.format("getAudioUri() %s.%s not found in bundle.", fileBundle, fileBundleExt));
+                    Log.d(TAG, String.format("getAudioUri() %s.%s not found in bundle.", fileBundle, "mp3"));
                     audioUriMap.put(uriBundle, null);
                     //type = fileSysWithExt;
                     return getDefaultUserUri(uriDefault); // --- if specified bundle but not found, use default directlly
@@ -1206,17 +1250,17 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
                     audioUriMap.put(uriBundle, Uri.parse("android.resource://" + mPackageName + "/" + Integer.toString(res)));
                     //bundleRingtoneUri = Uri.parse("android.resource://" + reactContext.getPackageName() + "/" + R.raw.incallmanager_ringtone);
                     //bundleRingtoneUri = Uri.parse("android.resource://" + reactContext.getPackageName() + "/raw/incallmanager_ringtone");
-                    Log.d(TAG, "getAudioUri() using: " + type);
+                    Log.d(TAG, "getAudioUri() using: " + _type);
                     return audioUriMap.get(uriBundle);
                 }
             } else {
-                Log.d(TAG, "getAudioUri() using: " + type);
+                Log.d(TAG, "getAudioUri() using: " + _type);
                 return audioUriMap.get(uriBundle);
             }
         }
 
         // --- Check file every time in case user deleted.
-        final String target = fileSysPath + "/" + type;
+        final String target = "/system/media/audio/ui" + "/" + _type;
         Uri _uri = getSysFileUri(target);
         if (_uri == null) {
             Log.d(TAG, "getAudioUri() using user default");
@@ -1238,14 +1282,14 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
 
     private Uri getDefaultUserUri(final String type) {
         // except ringtone, it doesn't suppose to be go here. and every android has different files unlike apple;
-        if (type.equals("defaultRingtoneUri")) {
-            return Settings.System.DEFAULT_RINGTONE_URI;
-        } else if (type.equals("defaultRingbackUri")) {
-            return Settings.System.DEFAULT_RINGTONE_URI;
-        } else if (type.equals("defaultBusytoneUri")) {
-            return Settings.System.DEFAULT_NOTIFICATION_URI; // --- DEFAULT_ALARM_ALERT_URI
-        } else {
-            return Settings.System.DEFAULT_NOTIFICATION_URI;
+        switch (type) {
+            case "defaultRingtoneUri":
+            case "defaultRingbackUri":
+                return Settings.System.DEFAULT_RINGTONE_URI;
+            // --- DEFAULT_ALARM_ALERT_URI
+
+            default:
+                return Settings.System.DEFAULT_NOTIFICATION_URI;
         }
     }
 // ===== File Uri End =====
@@ -1362,12 +1406,14 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
                         playing = true;
 
                         // --- make sure audio routing, or it will be wired when switch suddenly
-                        if (caller.equals("mBusytone")) {
-                            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-                        } else if (caller.equals("mRingback")) {
-                            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-                        } else if (caller.equals("mRingtone")) {
-                            audioManager.setMode(AudioManager.MODE_RINGTONE);
+                        switch (caller) {
+                            case "mBusytone":
+                            case "mRingback":
+                                audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                                break;
+                            case "mRingtone":
+                                audioManager.setMode(AudioManager.MODE_RINGTONE);
+                                break;
                         }
                         FlutterIncallManagerPlugin.this.updateAudioRoute();
 
@@ -1505,7 +1551,6 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
     /**
      * 请求录制权限
      *
-     * @param result
      */
     public void requestRecordPermission(Result result) {
         Log.d(TAG, "FlutterInCallManager.requestRecordPermission(): enter");
@@ -1522,7 +1567,6 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
     /**
      * 请求摄像头权限
      *
-     * @param result
      */
     public void requestCameraPermission(Result result) {
         Log.d(TAG, "FlutterInCallManager.requestCameraPermission(): enter");
@@ -1558,7 +1602,7 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
             //promise.reject(new Exception("_requestPermission(): currentActivity is not attached"));
             return;
         }
-    int requestPermissionCode = getRandomInteger(1, 65535);
+        int requestPermissionCode = getRandomInteger(1, 65535);
         mRequestPermissionCodeTargetPermission.put(requestPermissionCode, targetPermission);
         ActivityCompat.requestPermissions(currentActivity, new String[]{targetPermission}, requestPermissionCode);
     }
@@ -1632,11 +1676,7 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
                 setSpeakerphoneOn(true);
                 break;
             case EARPIECE:
-                setSpeakerphoneOn(false);
-                break;
             case WIRED_HEADSET:
-                setSpeakerphoneOn(false);
-                break;
             case BLUETOOTH:
                 setSpeakerphoneOn(false);
                 break;
@@ -1762,7 +1802,7 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             return audioManager.isWiredHeadsetOn();
         } else {
-            final AudioDeviceInfo[] devices = audioManager.getDevices(AudioManager.GET_DEVICES_ALL);
+            final AudioDeviceInfo[] devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS | AudioManager.GET_DEVICES_OUTPUTS);
             for (AudioDeviceInfo device : devices) {
                 final int type = device.getType();
                 if (type == AudioDeviceInfo.TYPE_WIRED_HEADSET) {
@@ -1880,21 +1920,21 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
             */
 
 
-            String audioDevicesJson = "[";
+            StringBuilder audioDevicesJson = new StringBuilder("[");
             for (AudioDevice s : audioDevices) {
-                audioDevicesJson += "\"" + s.name() + "\",";
+                audioDevicesJson.append("\"").append(s.name()).append("\",");
             }
 
             // --- strip the last `,`
             if (audioDevicesJson.length() > 1) {
-                audioDevicesJson = audioDevicesJson.substring(0, audioDevicesJson.length() - 1);
+                audioDevicesJson = new StringBuilder(audioDevicesJson.substring(0, audioDevicesJson.length() - 1));
             }
-            audioDevicesJson += "]";
+            audioDevicesJson.append("]");
 
             if (eventSink != null) {
                 ConstraintsMap params = new ConstraintsMap();
                 params.putString("event", "onAudioDeviceChanged");
-                params.putString("availableAudioDeviceList", audioDevicesJson);
+                params.putString("availableAudioDeviceList", audioDevicesJson.toString());
                 params.putString("selectedAudioDevice", (selectedAudioDevice == null) ? "" : selectedAudioDevice.name());
                 eventSink.success(params.toMap());
             }
@@ -1905,18 +1945,18 @@ public class FlutterIncallManagerPlugin implements MethodCallHandler {
     private Map<String, Object> getAudioDeviceStatusMap() {
         //WritableMap data = Arguments.createMap();
         Map<String, Object> data = new HashMap<String, Object>();
-        String audioDevicesJson = "[";
+        StringBuilder audioDevicesJson = new StringBuilder("[");
         for (AudioDevice s : audioDevices) {
-            audioDevicesJson += "\"" + s.name() + "\",";
+            audioDevicesJson.append("\"").append(s.name()).append("\",");
         }
 
         // --- strip the last `,`
         if (audioDevicesJson.length() > 1) {
-            audioDevicesJson = audioDevicesJson.substring(0, audioDevicesJson.length() - 1);
+            audioDevicesJson = new StringBuilder(audioDevicesJson.substring(0, audioDevicesJson.length() - 1));
         }
-        audioDevicesJson += "]";
+        audioDevicesJson.append("]");
 
-        data.put("availableAudioDeviceList", audioDevicesJson);
+        data.put("availableAudioDeviceList", audioDevicesJson.toString());
         data.put("selectedAudioDevice", (selectedAudioDevice == null) ? "" : selectedAudioDevice.name());
 
         return data;
